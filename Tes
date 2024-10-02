@@ -1,0 +1,437 @@
+1. File `Database.php`
+
+<?php
+
+class Database {
+
+ // Variabel untuk menyimpan pengaturan database
+
+ private $host = "localhost"; // Host database
+
+ private $db_name = "crud_oop"; // Nama database
+
+ private $username = "root"; // Username MySQL
+
+ private $password = ""; // Password MySQL
+
+ public $conn;
+
+ // Fungsi untuk membuka koneksi ke database
+
+ public function getConnection() {
+
+ $this->conn = null;
+
+ try {
+
+ // Buat koneksi menggunakan PDO
+
+ $this->conn = new PDO("mysql:host=" . $this->host . ";dbname=" . $this->db_name, 
+
+$this->username, $this->password);
+
+ $this->conn->exec("set names utf8"); // Set encoding
+
+ } catch (PDOException $exception) {
+
+ echo "Connection error: " . $exception->getMessage(); // Tangkap error koneksi
+
+ }
+
+ return $this->conn; // Kembalikan koneksi
+
+ }
+
+}
+
+?>
+
+
+2. File `Product.php`
+
+<?php
+
+class Product {
+
+ // Koneksi database dan nama tabel
+
+ private $conn;
+
+ private $table_name = "products";
+
+ // Properti objek produk
+
+ public $id;
+
+ public $name;
+
+ public $price;
+
+ public $description;
+
+ public $created;
+
+ // Constructor untuk menginisialisasi koneksi database
+
+ public function __construct($db) {
+
+ $this->conn = $db;
+
+ }
+
+ // Fungsi untuk membuat produk baru
+
+ public function create() {
+
+ // Query untuk insert data produk
+
+ $query = "INSERT INTO " . $this->table_name . " SET name=:name, price=:price, 
+
+description=:description, created=:created";
+
+ // Siapkan query
+
+ $stmt = $this->conn->prepare($query);
+
+ // Bersihkan input
+
+ $this->name = htmlspecialchars(strip_tags($this->name));
+
+ $this->price = htmlspecialchars(strip_tags($this->price));
+
+ $this->description = htmlspecialchars(strip_tags($this->description));
+
+ $this->created = htmlspecialchars(strip_tags($this->created));
+
+ // Bind data
+
+ $stmt->bindParam(":name", $this->name);
+
+
+$stmt->bindParam(":price", $this->price);
+
+ $stmt->bindParam(":description", $this->description);
+
+ $stmt->bindParam(":created", $this->created);
+
+ // Eksekusi query, jika berhasil kembalikan true
+
+ if ($stmt->execute()) {
+
+ return true;
+
+ }
+
+ return false; // Jika gagal kembalikan false
+
+ }
+
+ // Fungsi untuk mendapatkan semua produk dengan pagination
+
+ public function readWithPagination($from_record_num, $records_per_page) {
+
+ // Query untuk memilih produk
+
+ $query = "SELECT * FROM " . $this->table_name . " ORDER BY created DESC LIMIT ?, ?";
+
+ // Siapkan query
+
+ $stmt = $this->conn->prepare($query);
+
+ // Bind nilai limit pagination
+
+ $stmt->bindParam(1, $from_record_num, PDO::PARAM_INT);
+
+ $stmt->bindParam(2, $records_per_page, PDO::PARAM_INT);
+
+ // Eksekusi query
+
+ $stmt->execute();
+
+ return $stmt; // Kembalikan hasil
+
+ }
+
+ // Fungsi untuk menghitung semua produk (untuk pagination)
+
+ public function countAll() {
+
+ // Query menghitung semua baris produk
+
+ $query = "SELECT COUNT(*) as total_rows FROM " . $this->table_name;
+
+ // Siapkan query
+
+ $stmt = $this->conn->prepare($query);
+
+// Eksekusi query
+
+ $stmt->execute();
+
+ $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+ return $row['total_rows']; // Kembalikan jumlah total
+
+ }
+
+}
+
+?>
+
+3. File `create_product.php`
+
+<?php
+
+// Sertakan file koneksi dan kelas produk
+
+include_once 'Database.php';
+
+include_once 'Product.php';
+
+// Inisialisasi koneksi ke database
+
+$database = new Database();
+
+$db = $database->getConnection();
+
+// Inisialisasi objek produk
+
+$product = new Product($db);
+
+// Set properti produk yang akan ditambahkan
+
+$product->name = $_POST['name'];
+
+$product->price = $_POST['price'];
+
+$product->description = $_POST['description'];
+
+$product->created = date('Y-m-d H:i:s'); // Set waktu pembuatan produk
+
+// Tambahkan produk ke database
+
+if ($product->create()) {
+
+ echo "Produk berhasil ditambahkan!"; // Tampilkan pesan sukses
+
+} else {
+
+ echo "Gagal menambahkan produk."; // Tampilkan pesan gagal
+
+}
+
+?>
+
+4. File `list_products.php`
+
+<?php
+
+// Sertakan file koneksi dan kelas produk
+
+include_once 'Database.php';
+
+include_once 'Product.php';
+
+// Inisialisasi koneksi ke database
+
+$database = new Database();
+
+$db = $database->getConnection();
+
+// Inisialisasi objek produk
+
+$product = new Product($db);
+
+// Tentukan jumlah produk per halaman
+
+$products_per_page = 5;
+
+// Ambil halaman saat ini dari query string, jika tidak ada set ke 1
+
+$page = isset($_GET['page']) ? $_GET['page'] : 1;
+
+$start = ($page - 1) * $products_per_page; // Tentukan batas mulai produk
+
+// Dapatkan produk dengan pagination
+
+$stmt = $product->readWithPagination($start, $products_per_page);
+
+$num = $stmt->rowCount();
+
+// Tampilkan produk
+
+if ($num > 0) {
+
+ while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+
+ extract($row);
+
+ echo "<div>";
+
+ echo "<h3>{$name}</h3>";
+
+ echo "<p>{$description}</p>";
+
+ echo "<p>Price: \${$price}</p>";
+
+ echo "</div>";
+
+ }
+
+}
+
+// Hitung total halaman
+
+$total_rows = $product->countAll();
+
+$total_pages = ceil($total_rows / $products_per_page);
+
+// Tampilkan pagination
+
+echo "<div>";
+
+for ($i = 1; $i <= $total_pages; $i++) {
+
+ echo "<a href='list_products.php?page={$i}'>{$i}</a> ";
+
+}
+
+echo "</div>";
+
+?>
+
+5. File `index.html`
+
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+ <title>CRUD Produk dengan AJAX</title>
+
+ <script>
+
+ // Fungsi untuk menambah produk dengan AJAX
+
+ function addProduct() {
+
+ var formData = new FormData(document.getElementById('productForm'));
+
+ var xhr = new XMLHttpRequest();
+
+ xhr.open("POST", "create_product.php", true);
+
+ xhr.onload = function () {
+
+ if (xhr.status == 200) {
+
+ document.getElementById('message').innerHTML = xhr.responseText;
+
+ loadProducts(); // Reload produk setelah menambah
+
+ }
+
+ };
+
+ xhr.send(formData);
+
+ }
+
+ // Fungsi untuk memuat daftar produk
+
+ function loadProducts(page = 1) {
+
+var xhr = new XMLHttpRequest();
+
+ xhr.open("GET", "list_products.php?page=" + page, true);
+
+ xhr.onload = function () {
+
+ if (xhr.status == 200) {
+
+ document.getElementById('products').innerHTML = xhr.responseText;
+
+ }
+
+ };
+
+ xhr.send();
+
+ }
+
+ // Muat produk saat halaman pertama kali dibuka
+
+ window.onload = function() {
+
+ loadProducts();
+
+ };
+
+ </script>
+
+</head>
+
+<body>
+
+ <h1>Tambah Produk</h1>
+
+ <form id="productForm" onsubmit="event.preventDefault(); addProduct();">
+
+ <input type="text" name="name" placeholder="Nama Produk" required><br>
+
+ <input type="text" name="price" placeholder="Harga Produk" required><br>
+
+ <textarea name="description" placeholder="Deskripsi Produk" 
+
+required></textarea><br>
+
+ <button type="submit">Tambah Produk</button>
+
+ </form>
+
+ <div id="message"></div>
+
+ <h1>Daftar Produk</h1>
+
+ <div id="products"></div>
+
+</body>
+
+</html>
+
+6. Struktur Database
+
+Gunakan SQL berikut untuk membuat tabel produk:
+
+sql
+
+CREATE TABLE `products` (
+
+ `id` int(11) NOT NULL AUTO_INCREMENT,
+
+ `name` varchar(255) NOT NULL,
+
+ `price` decimal(10,2) NOT NULL,
+
+ `description` text NOT NULL,
+
+ `created` datetime NOT NULL,
+
+ PRIMARY KEY (`id`)
+
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+Penjelasan:
+
+- Database.php: Kelas untuk koneksi
+
+database.
+
+- Product.php: Kelas untuk operasi CRUD pada produk.
+
+- create_product.php: Menambahkan produk baru.
+
+- list_products.php: Menampilkan daftar produk dengan pagination.
+
+- index.html: Antarmuka untuk menambah produk dan menampilkan produk dengan AJAX.
